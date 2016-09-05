@@ -64,17 +64,17 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 	return r, nil
 }
 
-func (r *IngesterRegistration) updateLoop() error {
+func (r *IngesterRegistration) updateLoop() {
 	defer r.wait.Done()
 	ticker := time.NewTicker(1 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
 			log.Info("Adding ingester to consul")
-			if err := r.consul.PutBytes(r.id, r.desc); err == nil {
-				break
-			} else {
+			if err := r.consul.PutBytes(r.id, r.desc); err != nil {
 				log.Errorf("Failed to write to consul, sleeping: %v", err)
+			} else {
+				return
 			}
 		case <-r.quit:
 			ticker.Stop()
