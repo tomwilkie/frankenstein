@@ -67,6 +67,7 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 func (r *IngesterRegistration) updateLoop() {
 	defer r.wait.Done()
 	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
@@ -77,7 +78,6 @@ func (r *IngesterRegistration) updateLoop() {
 				return
 			}
 		case <-r.quit:
-			ticker.Stop()
 			return
 		}
 	}
