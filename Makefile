@@ -58,7 +58,6 @@ $(EXES) lint test $(STATIC): frank-build/$(UPTODATE)
 	$(SUDO) docker run $(RM) -ti \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/tomwilkie/frankenstein \
-		-e CIRCLECI -e CIRCLE_BUILD_NUM -e CIRCLE_NODE_TOTAL -e CIRCLE_NODE_INDEX -e COVERDIR \
 		$(IMAGE_PREFIX)/frank-build $@
 
 else
