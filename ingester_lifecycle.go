@@ -78,6 +78,7 @@ func (r *IngesterRegistration) updateLoop() error {
 			}
 		case <-r.quit:
 			ticker.Stop()
+			return
 		}
 	}
 }
@@ -115,8 +116,16 @@ func generateTokens(id string, numTokens int) []uint32 {
 }
 
 // Unregister deletes ingestor config from Consul
-func (r *IngesterRegistration) Unregister() error {
+func (r *IngesterRegistration) Unregister() {
 	log.Info("Removing ingester from consul")
+	close(r.quit)
+	r.wait.Wait()
+	if err := r.unregister(); err != nil {
+		log.Errorf("Error unregistering ingester: %v", err)
+	}
+}
+
+func (r *IngesterRegistration) unregister() error {
 	buf, err := json.Marshal(IngesterDesc{
 		ID:       r.id,
 		Hostname: "",
