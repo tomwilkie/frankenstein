@@ -68,7 +68,7 @@ $(EXES): frank-build/$(UPTODATE)
 	$(NETGO_CHECK)
 
 lint: frank-build/$(UPTODATE)
-	./tools/lint .
+	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
 
 test: frank-build/$(UPTODATE)
 	./tools/test -no-go-get

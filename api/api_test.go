@@ -130,8 +130,8 @@ func TestEndpoints(t *testing.T) {
 			},
 			response: &queryData{
 				ResultType: model.ValMatrix,
-				Result: model.Matrix{
-					&model.SampleStream{
+				Result: []*model.SampleStream{
+					{
 						Values: []model.SamplePair{
 							{Value: 0, Timestamp: start},
 							{Value: 1, Timestamp: start.Add(1 * time.Second)},
