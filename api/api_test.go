@@ -130,7 +130,7 @@ func TestEndpoints(t *testing.T) {
 			},
 			response: &queryData{
 				ResultType: model.ValMatrix,
-				Result: []*model.SampleStream{
+				Result: model.Matrix([]*model.SampleStream{
 					{
 						Values: []model.SamplePair{
 							{Value: 0, Timestamp: start},
@@ -139,7 +139,7 @@ func TestEndpoints(t *testing.T) {
 						},
 						Metric: model.Metric{},
 					},
-				},
+				}),
 			},
 		},
 		// Missing query params in range queries.
