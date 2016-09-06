@@ -48,6 +48,7 @@ type Distributor struct {
 	sendDuration    *prometheus.HistogramVec
 }
 
+// ReadRing represents the read inferface to the ring.
 type ReadRing interface {
 	prometheus.Collector
 
@@ -55,6 +56,7 @@ type ReadRing interface {
 	GetAll() []ring.IngesterDesc
 }
 
+// IngesterClientFactory creates ingester clients.
 type IngesterClientFactory func(string) (*IngesterClient, error)
 
 // DistributorConfig contains the configuration require to

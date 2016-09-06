@@ -48,6 +48,8 @@ var ingestorOwnershipDesc = prometheus.NewDesc(
 	[]string{"ingester"}, nil,
 )
 
+// CoordinationStateClient is an interface to getting changes to the coordination
+// state.  Should allow us to swap out Consul for something else (mesh?) later.
 type CoordinationStateClient interface {
 	WatchPrefix(path string, factory func() interface{}, done chan struct{}, f func(string, interface{}) bool)
 }
