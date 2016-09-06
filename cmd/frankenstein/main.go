@@ -170,7 +170,7 @@ func setupDistributor(
 	cfg cfg,
 	ring *ring.Ring,
 	chunkStore frankenstein.ChunkStore,
-) (*ring.Ring, error) {
+) {
 	clientFactory := func(hostname string) (*frankenstein.IngesterClient, error) {
 		return frankenstein.NewIngesterClient(hostname, cfg.remoteTimeout), nil
 	}
@@ -185,7 +185,6 @@ func setupDistributor(
 
 	// TODO: Move querier to separate binary.
 	setupQuerier(distributor, chunkStore, prefix)
-	return ring, nil
 }
 
 // setupQuerier sets up a complete querying pipeline:
