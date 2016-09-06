@@ -32,6 +32,7 @@ import (
 
 	"github.com/tomwilkie/frankenstein"
 	"github.com/tomwilkie/frankenstein/api"
+	"github.com/tomwilkie/frankenstein/ring"
 )
 
 const (
@@ -89,11 +90,11 @@ func main() {
 	flag.IntVar(&numTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
 	flag.Parse()
 
-	consul, err := frankenstein.NewConsulClient(consulHost)
+	consul, err := ring.NewConsulClient(consulHost)
 	if err != nil {
 		log.Fatalf("Error initializing Consul client: %v", err)
 	}
-	consul = frankenstein.PrefixClient(consul, consulPrefix)
+	consul = ring.PrefixClient(consul, consulPrefix)
 
 	var chunkCache *frankenstein.ChunkCache
 	if memcachedHostname != "" {
@@ -125,7 +126,7 @@ func main() {
 	case distributor:
 		setupDistributor(consul, chunkStore, remoteTimeout)
 	case ingester:
-		registration, err := frankenstein.RegisterIngester(consul, listenPort, numTokens)
+		registration, err := ring.RegisterIngester(consul, listenPort, numTokens)
 		if err != nil {
 			// This only happens for errors in configuration & set-up, not for
 			// network errors.
@@ -152,7 +153,7 @@ func main() {
 }
 
 func setupDistributor(
-	consulClient frankenstein.ConsulClient,
+	consulClient ring.ConsulClient,
 	chunkStore frankenstein.ChunkStore,
 	remoteTimeout time.Duration,
 ) {

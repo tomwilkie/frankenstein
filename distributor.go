@@ -21,9 +21,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/tomwilkie/frankenstein/ring"
 )
 
 var (
@@ -37,7 +38,7 @@ var (
 // Distributor is a storage.SampleAppender and a frankenstein.Querier which
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
-	ring       *Ring
+	ring       *ring.Ring
 	cfg        DistributorConfig
 	clientsMtx sync.RWMutex
 	clients    map[string]*IngesterClient
@@ -54,23 +55,15 @@ type Distributor struct {
 // DistributorConfig contains the configuration require to
 // create a Distributor
 type DistributorConfig struct {
-	ConsulClient  ConsulClient
+	ConsulClient  ring.ConsulClient
 	ConsulPrefix  string
 	ClientFactory func(string) (*IngesterClient, error)
-}
-
-// IngesterDesc is the serialised state in Consul representing
-// an individual ingester.
-type IngesterDesc struct {
-	ID       string   `json:"ID"`
-	Hostname string   `json:"hostname"`
-	Tokens   []uint32 `json:"tokens"`
 }
 
 // NewDistributor constructs a new Distributor
 func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
 	d := &Distributor{
-		ring:    NewRing(),
+		ring:    ring.NewRing(),
 		cfg:     cfg,
 		clients: map[string]*IngesterClient{},
 		quit:    make(chan struct{}),
@@ -110,9 +103,9 @@ func (d *Distributor) Stop() {
 
 func (d *Distributor) loop() {
 	defer close(d.done)
-	factory := func() interface{} { return &IngesterDesc{} }
+	factory := func() interface{} { return &ring.IngesterDesc{} }
 	d.cfg.ConsulClient.WatchPrefix(d.cfg.ConsulPrefix, factory, d.quit, func(key string, value interface{}) bool {
-		c := *value.(*IngesterDesc)
+		c := *value.(*ring.IngesterDesc)
 		log.Infof("Got update to ingester %d", c.ID)
 		d.consulUpdates.Inc()
 		d.ring.Update(c)

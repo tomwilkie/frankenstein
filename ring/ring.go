@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package frankenstein
+package ring
 
 // Based on https://raw.githubusercontent.com/stathat/consistent/master/consistent.go
 
@@ -23,6 +23,14 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+// IngesterDesc is the serialised state in Consul representing
+// an individual ingester.
+type IngesterDesc struct {
+	ID       string   `json:"ID"`
+	Hostname string   `json:"hostname"`
+	Tokens   []uint32 `json:"tokens"`
+}
 
 type uint32s []uint32
 
