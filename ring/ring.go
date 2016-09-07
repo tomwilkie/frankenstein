@@ -55,7 +55,7 @@ type Ring struct {
 	ringDesc Desc
 }
 
-// NewRing creates a new Ring object.
+// New creates a new Ring
 func New(client CoordinationStateClient) *Ring {
 	r := &Ring{
 		client: client,
