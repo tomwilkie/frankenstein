@@ -61,7 +61,7 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 		numTokens: numTokens,
 
 		id: hostname,
-		// hostname is the ip+port of this instance, written to consul sp
+		// hostname is the ip+port of this instance, written to consul so
 		// the distributors know where to connect.
 		hostname: fmt.Sprintf("%s:%d", addr, listenPort),
 		quit:     make(chan struct{}),
@@ -72,9 +72,13 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 	return r, nil
 }
 
-// Unregister removes ingester config from Consul
+// Unregister removes ingester config from Consul; will block
+// until we'll successfully unregistered.
 func (r *IngesterRegistration) Unregister() {
 	log.Info("Removing ingester from consul")
+
+	// closing r.quit triggers loop() to exit, which in turn will trigger
+	// the removal of out tokens.
 	close(r.quit)
 	r.wait.Wait()
 }

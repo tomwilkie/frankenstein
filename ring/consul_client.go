@@ -155,6 +155,47 @@ func (c *consulClient) CAS(key string, factory InstanceFactory, f CASCallback) e
 	return fmt.Errorf("failed to CAS %s", key)
 }
 
+const (
+	initialBackoff = 1 * time.Second
+	maxBackoff     = 1 * time.Minute
+)
+
+type backoff struct {
+	done    <-chan struct{}
+	backoff time.Duration
+}
+
+func newBackoff(done <-chan struct{}) *backoff {
+	return &backoff{
+		done:    done,
+		backoff: initialBackoff,
+	}
+}
+
+func (b *backoff) reset() {
+	b.backoff = initialBackoff
+}
+
+func (b *backoff) wait() {
+	select {
+	case <-b.done:
+	case <-time.After(b.backoff):
+		b.backoff = b.backoff * 2
+		if b.backoff > maxBackoff {
+			b.backoff = maxBackoff
+		}
+	}
+}
+
+func isClosed(done <-chan struct{}) bool {
+	select {
+	case <-done:
+		return true
+	default:
+		return false
+	}
+}
+
 // WatchPrefix will watch a given prefix in consul for changes. When a value
 // under said prefix changes, the f callback is called with the deserialised
 // value. To construct the deserialised value, a factory function should be
@@ -162,19 +203,13 @@ func (c *consulClient) CAS(key string, factory InstanceFactory, f CASCallback) e
 // into. Values in Consul are assumed to be JSON. This function blocks until
 // the done channel is closed.
 func (c *consulClient) WatchPrefix(prefix string, factory InstanceFactory, done <-chan struct{}, f func(string, interface{}) bool) {
-	const (
-		initialBackoff = 1 * time.Second
-		maxBackoff     = 1 * time.Minute
-	)
 	var (
-		backoff = initialBackoff / 2
+		backoff = newBackoff(done)
 		index   = uint64(0)
 	)
 	for {
-		select {
-		case <-done:
+		if isClosed(done) {
 			return
-		default:
 		}
 		kvps, meta, err := c.kv.List(prefix, &consul.QueryOptions{
 			RequireConsistent: true,
@@ -183,18 +218,11 @@ func (c *consulClient) WatchPrefix(prefix string, factory InstanceFactory, done 
 		})
 		if err != nil {
 			log.Errorf("Error getting path %s: %v", prefix, err)
-			select {
-			case <-done:
-				return
-			case <-time.After(backoff):
-				backoff = backoff * 2
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
-				continue
-			}
+			backoff.wait()
+			continue
 		}
-		backoff = initialBackoff
+		backoff.reset()
+
 		// Skip if the index is the same as last time, because the key value is
 		// guaranteed to be the same as last time
 		if index == meta.LastIndex {
@@ -222,19 +250,13 @@ func (c *consulClient) WatchPrefix(prefix string, factory InstanceFactory, done 
 // into. Values in Consul are assumed to be JSON. This function blocks until
 // the done channel is closed.
 func (c *consulClient) WatchKey(key string, factory InstanceFactory, done <-chan struct{}, f func(interface{}) bool) {
-	const (
-		initialBackoff = 1 * time.Second
-		maxBackoff     = 1 * time.Minute
-	)
 	var (
-		backoff = initialBackoff / 2
+		backoff = newBackoff(done)
 		index   = uint64(0)
 	)
 	for {
-		select {
-		case <-done:
+		if isClosed(done) {
 			return
-		default:
 		}
 		kvp, meta, err := c.kv.Get(key, &consul.QueryOptions{
 			RequireConsistent: true,
@@ -242,19 +264,12 @@ func (c *consulClient) WatchKey(key string, factory InstanceFactory, done <-chan
 			WaitTime:          longPollDuration,
 		})
 		if err != nil {
-			log.Errorf("Error getting key %s: %v", key, err)
-			select {
-			case <-done:
-				return
-			case <-time.After(backoff):
-				backoff = backoff * 2
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
-				continue
-			}
+			log.Errorf("Error getting path %s: %v", key, err)
+			backoff.wait()
+			continue
 		}
-		backoff = initialBackoff
+		backoff.reset()
+
 		// Skip if the index is the same as last time, because the key value is
 		// guaranteed to be the same as last time
 		if index == meta.LastIndex {
