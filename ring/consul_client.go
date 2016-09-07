@@ -33,7 +33,7 @@ type ConsulClient interface {
 	Get(key string, factory InstanceFactory) error
 	CAS(key string, factory InstanceFactory, f CASCallback) error
 	WatchPrefix(path string, factory InstanceFactory, done chan struct{}, f func(string, interface{}) bool)
-	WatchKey(key string, factory InstanceFactory, done chan struct{}, f func(string, interface{}) bool)
+	WatchKey(key string, factory InstanceFactory, done chan struct{}, f func(interface{}) bool)
 	PutBytes(key string, buf []byte) error
 }
 
@@ -218,7 +218,7 @@ func (c *consulClient) WatchPrefix(prefix string, factory InstanceFactory, done 
 // supplied which generates an empty struct for WatchPrefix to deserialise
 // into. Values in Consul are assumed to be JSON. This function blocks until
 // the done channel is closed.
-func (c *consulClient) WatchKey(key string, factory InstanceFactory, done chan struct{}, f func(string, interface{}) bool) {
+func (c *consulClient) WatchKey(key string, factory InstanceFactory, done chan struct{}, f func(interface{}) bool) {
 	const (
 		initialBackoff = 1 * time.Second
 		maxBackoff     = 1 * time.Minute
@@ -257,12 +257,15 @@ func (c *consulClient) WatchKey(key string, factory InstanceFactory, done chan s
 		}
 		index = meta.LastIndex
 
-		out := factory()
-		if err := json.NewDecoder(bytes.NewReader(kvp.Value)).Decode(out); err != nil {
-			log.Errorf("Error deserialising %s: %v", kvp.Key, err)
-			continue
+		var out interface{}
+		if kvp != nil {
+			out = factory()
+			if err := json.NewDecoder(bytes.NewReader(kvp.Value)).Decode(out); err != nil {
+				log.Errorf("Error deserialising %s: %v", kvp.Key, err)
+				continue
+			}
 		}
-		if !f(kvp.Key, out) {
+		if !f(out) {
 			return
 		}
 	}
@@ -303,7 +306,7 @@ func (c *prefixedConsulClient) WatchPrefix(path string, factory InstanceFactory,
 }
 
 // WatchKey watches a key.
-func (c *prefixedConsulClient) WatchKey(key string, factory InstanceFactory, done chan struct{}, f func(string, interface{}) bool) {
+func (c *prefixedConsulClient) WatchKey(key string, factory InstanceFactory, done chan struct{}, f func(interface{}) bool) {
 	c.consul.WatchKey(c.prefix+key, factory, done, f)
 }
 

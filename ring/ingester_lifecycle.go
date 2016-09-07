@@ -79,9 +79,11 @@ func (r *IngesterRegistration) loop() {
 
 func (r *IngesterRegistration) pickTokens() []uint32 {
 	var tokens []uint32
-	if err := r.consul.CAS(ring, ringDescFactory, func(in interface{}) (out interface{}, retry bool, err error) {
-		ringDesc := &Desc{}
-		if in != nil {
+	if err := r.consul.CAS(ring, descFactory, func(in interface{}) (out interface{}, retry bool, err error) {
+		var ringDesc *Desc
+		if in == nil {
+			ringDesc = newDesc()
+		} else {
 			ringDesc = in.(*Desc)
 		}
 
@@ -106,7 +108,8 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 	for {
 		select {
 		case <-ticker.C:
-			if err := r.consul.CAS(ring, ringDescFactory, func(in interface{}) (out interface{}, retry bool, err error) {
+			log.Infof("Heartbeating to consul...")
+			if err := r.consul.CAS(ring, descFactory, func(in interface{}) (out interface{}, retry bool, err error) {
 				ringDesc := &Desc{}
 				if in != nil {
 					ringDesc = in.(*Desc)
@@ -115,6 +118,7 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 				ingesterDesc, ok := ringDesc.Ingesters[r.id]
 				if !ok {
 					// consul must have restarted
+					log.Infof("Found empty ring, inserting tokens!")
 					populateRingDesc(ringDesc, r.id, r.hostname, tokens)
 				} else {
 					ingesterDesc.Timestamp = time.Now()
@@ -124,8 +128,6 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 				return ringDesc, true, nil
 			}); err != nil {
 				log.Errorf("Failed to write to consul, sleeping: %v", err)
-			} else {
-				return
 			}
 		case <-r.quit:
 			return
@@ -141,7 +143,7 @@ func (r *IngesterRegistration) Unregister() {
 }
 
 func (r *IngesterRegistration) unregister(tokens []uint32) {
-	if err := r.consul.CAS(ring, ringDescFactory, func(in interface{}) (out interface{}, retry bool, err error) {
+	if err := r.consul.CAS(ring, descFactory, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			log.Error("Found empty ring when trying to unregister!")
 			return nil, false, nil

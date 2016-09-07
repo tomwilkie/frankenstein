@@ -30,6 +30,12 @@ type TokenDesc struct {
 	Ingester string `json:"ingester"`
 }
 
-func ringDescFactory() interface{} {
-	return &Desc{}
+func descFactory() interface{} {
+	return newDesc()
+}
+
+func newDesc() *Desc {
+	return &Desc{
+		Ingesters: map[string]IngesterDesc{},
+	}
 }
