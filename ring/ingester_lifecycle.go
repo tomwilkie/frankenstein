@@ -29,7 +29,7 @@ import (
 
 const (
 	infName           = "eth0"
-	ring              = "ring"
+	consulKey         = "ring"
 	heartbeatInterval = 5 * time.Second
 )
 
@@ -72,6 +72,13 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 	return r, nil
 }
 
+// Unregister removes ingester config from Consul
+func (r *IngesterRegistration) Unregister() {
+	log.Info("Removing ingester from consul")
+	close(r.quit)
+	r.wait.Wait()
+}
+
 func (r *IngesterRegistration) loop() {
 	defer r.wait.Done()
 	tokens := r.pickTokens()
@@ -81,7 +88,7 @@ func (r *IngesterRegistration) loop() {
 
 func (r *IngesterRegistration) pickTokens() []uint32 {
 	var tokens []uint32
-	if err := r.consul.CAS(ring, descFactory, func(in interface{}) (out interface{}, retry bool, err error) {
+	pickTokens := func(in interface{}) (out interface{}, retry bool, err error) {
 		var ringDesc *Desc
 		if in == nil {
 			ringDesc = newDesc()
@@ -95,40 +102,41 @@ func (r *IngesterRegistration) pickTokens() []uint32 {
 		}
 		tokens = generateTokens(r.numTokens, takenTokens)
 
-		populateRingDesc(ringDesc, r.id, r.hostname, tokens)
-
+		ringDesc.addIngester(r.id, r.hostname, tokens)
 		return ringDesc, true, nil
-	}); err != nil {
+	}
+	if err := r.consul.CAS(consulKey, descFactory, pickTokens); err != nil {
 		log.Fatalf("Failed to pick tokens in consul: %v", err)
 	}
 	return tokens
 }
 
 func (r *IngesterRegistration) heartbeat(tokens []uint32) {
+	heartbeat := func(in interface{}) (out interface{}, retry bool, err error) {
+		ringDesc := &Desc{}
+		if in != nil {
+			ringDesc = in.(*Desc)
+		}
+
+		ingesterDesc, ok := ringDesc.Ingesters[r.id]
+		if !ok {
+			// consul must have restarted
+			log.Infof("Found empty ring, inserting tokens!")
+			ringDesc.addIngester(r.id, r.hostname, tokens)
+		} else {
+			ingesterDesc.Timestamp = time.Now()
+			ringDesc.Ingesters[r.id] = ingesterDesc
+		}
+
+		return ringDesc, true, nil
+	}
 	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			log.Infof("Heartbeating to consul...")
-			if err := r.consul.CAS(ring, descFactory, func(in interface{}) (out interface{}, retry bool, err error) {
-				ringDesc := &Desc{}
-				if in != nil {
-					ringDesc = in.(*Desc)
-				}
-
-				ingesterDesc, ok := ringDesc.Ingesters[r.id]
-				if !ok {
-					// consul must have restarted
-					log.Infof("Found empty ring, inserting tokens!")
-					populateRingDesc(ringDesc, r.id, r.hostname, tokens)
-				} else {
-					ingesterDesc.Timestamp = time.Now()
-					ringDesc.Ingesters[r.id] = ingesterDesc
-				}
-
-				return ringDesc, true, nil
-			}); err != nil {
+			if err := r.consul.CAS(consulKey, descFactory, heartbeat); err != nil {
 				log.Errorf("Failed to write to consul, sleeping: %v", err)
 			}
 		case <-r.quit:
@@ -137,24 +145,18 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 	}
 }
 
-// Unregister deletes ingestor config from Consul
-func (r *IngesterRegistration) Unregister() {
-	log.Info("Removing ingester from consul")
-	close(r.quit)
-	r.wait.Wait()
-}
-
 func (r *IngesterRegistration) unregister(tokens []uint32) {
-	if err := r.consul.CAS(ring, descFactory, func(in interface{}) (out interface{}, retry bool, err error) {
+	unregister := func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			log.Error("Found empty ring when trying to unregister!")
 			return nil, false, nil
 		}
 
 		ringDesc := in.(*Desc)
-		removeFromRingDesc(ringDesc, r.id, tokens)
+		ringDesc.removeIngester(r.id, tokens)
 		return ringDesc, true, nil
-	}); err != nil {
+	}
+	if err := r.consul.CAS(consulKey, descFactory, unregister); err != nil {
 		log.Fatalf("Failed to unregister from consul: %v", err)
 	}
 }
@@ -165,6 +167,8 @@ func (ts sortableUint32) Len() int           { return len(ts) }
 func (ts sortableUint32) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
 func (ts sortableUint32) Less(i, j int) bool { return ts[i] < ts[j] }
 
+// generateTokens make numTokens random tokens, none of which clash
+// with takenTokens.  Assumes takenTokens is sorted.
 func generateTokens(numTokens int, takenTokens []uint32) []uint32 {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	tokens := sortableUint32{}
@@ -181,49 +185,6 @@ func generateTokens(numTokens int, takenTokens []uint32) []uint32 {
 	}
 	sort.Sort(tokens)
 	return tokens
-}
-
-func populateRingDesc(ringDesc *Desc, id, hostname string, tokens []uint32) {
-	ringDesc.Ingesters[id] = IngesterDesc{
-		Hostname:  hostname,
-		Timestamp: time.Now(),
-	}
-
-	for _, token := range tokens {
-		ringDesc.Tokens = append(ringDesc.Tokens, TokenDesc{
-			Token:    token,
-			Ingester: id,
-		})
-	}
-
-	sort.Sort(ringDesc.Tokens)
-}
-
-func removeFromRingDesc(ringDesc *Desc, id string, tokens []uint32) {
-	delete(ringDesc.Ingesters, id)
-	output := []TokenDesc{}
-	i, j := 0, 0
-	for i < len(ringDesc.Tokens) && j < len(tokens) {
-		if ringDesc.Tokens[i].Token < tokens[j] {
-			output = append(output, ringDesc.Tokens[i])
-			i++
-		} else if ringDesc.Tokens[i].Token > tokens[j] {
-			log.Infof("Missing token from ring: %d", tokens[j])
-			j++
-		} else {
-			i++
-			j++
-		}
-	}
-	for i < len(ringDesc.Tokens) {
-		output = append(output, ringDesc.Tokens[i])
-		i++
-	}
-	for j < len(tokens) {
-		log.Infof("Missing token from ring: %d", tokens[j])
-		j++
-	}
-	ringDesc.Tokens = output
 }
 
 // getFirstAddressOf returns the first IPv4 address of the supplied interface name.
