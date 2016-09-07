@@ -60,7 +60,9 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 		consul:    consulClient,
 		numTokens: numTokens,
 
-		id:       hostname,
+		id: hostname,
+		// hostname is the ip+port of this instance, written to consul sp
+		// the distributors know where to connect.
 		hostname: fmt.Sprintf("%s:%d", addr, listenPort),
 		quit:     make(chan struct{}),
 	}

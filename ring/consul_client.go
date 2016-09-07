@@ -28,12 +28,13 @@ const (
 )
 
 // ConsulClient is a high-level client for Consul, that exposes operations
-// such as CAS and Watch which take callbacks.  It also deals with serialisation.
+// such as CAS and Watch which take callbacks.  It also deals with serialisation
+// by having an instance factory passed in to methods and deserialising into that.
 type ConsulClient interface {
 	Get(key string, factory InstanceFactory) error
 	CAS(key string, factory InstanceFactory, f CASCallback) error
-	WatchPrefix(path string, factory InstanceFactory, done chan struct{}, f func(string, interface{}) bool)
-	WatchKey(key string, factory InstanceFactory, done chan struct{}, f func(interface{}) bool)
+	WatchPrefix(path string, factory InstanceFactory, done <-chan struct{}, f func(string, interface{}) bool)
+	WatchKey(key string, factory InstanceFactory, done <-chan struct{}, f func(interface{}) bool)
 	PutBytes(key string, buf []byte) error
 }
 
@@ -160,7 +161,7 @@ func (c *consulClient) CAS(key string, factory InstanceFactory, f CASCallback) e
 // supplied which generates an empty struct for WatchPrefix to deserialise
 // into. Values in Consul are assumed to be JSON. This function blocks until
 // the done channel is closed.
-func (c *consulClient) WatchPrefix(prefix string, factory InstanceFactory, done chan struct{}, f func(string, interface{}) bool) {
+func (c *consulClient) WatchPrefix(prefix string, factory InstanceFactory, done <-chan struct{}, f func(string, interface{}) bool) {
 	const (
 		initialBackoff = 1 * time.Second
 		maxBackoff     = 1 * time.Minute
@@ -182,18 +183,20 @@ func (c *consulClient) WatchPrefix(prefix string, factory InstanceFactory, done 
 		})
 		if err != nil {
 			log.Errorf("Error getting path %s: %v", prefix, err)
-			backoff = backoff * 2
-			if backoff > maxBackoff {
-				backoff = maxBackoff
-			}
 			select {
 			case <-done:
 				return
 			case <-time.After(backoff):
+				backoff = backoff * 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
 				continue
 			}
 		}
 		backoff = initialBackoff
+		// Skip if the index is the same as last time, because the key value is
+		// guaranteed to be the same as last time
 		if index == meta.LastIndex {
 			continue
 		}
@@ -215,10 +218,10 @@ func (c *consulClient) WatchPrefix(prefix string, factory InstanceFactory, done 
 // WatchKey will watch a given key in consul for changes. When the value
 // under said key changes, the f callback is called with the deserialised
 // value. To construct the deserialised value, a factory function should be
-// supplied which generates an empty struct for WatchPrefix to deserialise
+// supplied which generates an empty struct for WatchKey to deserialise
 // into. Values in Consul are assumed to be JSON. This function blocks until
 // the done channel is closed.
-func (c *consulClient) WatchKey(key string, factory InstanceFactory, done chan struct{}, f func(interface{}) bool) {
+func (c *consulClient) WatchKey(key string, factory InstanceFactory, done <-chan struct{}, f func(interface{}) bool) {
 	const (
 		initialBackoff = 1 * time.Second
 		maxBackoff     = 1 * time.Minute
@@ -240,18 +243,20 @@ func (c *consulClient) WatchKey(key string, factory InstanceFactory, done chan s
 		})
 		if err != nil {
 			log.Errorf("Error getting key %s: %v", key, err)
-			backoff = backoff * 2
-			if backoff > maxBackoff {
-				backoff = maxBackoff
-			}
 			select {
 			case <-done:
 				return
 			case <-time.After(backoff):
+				backoff = backoff * 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
 				continue
 			}
 		}
 		backoff = initialBackoff
+		// Skip if the index is the same as last time, because the key value is
+		// guaranteed to be the same as last time
 		if index == meta.LastIndex {
 			continue
 		}
@@ -301,12 +306,12 @@ func (c *prefixedConsulClient) CAS(key string, factory InstanceFactory, f CASCal
 }
 
 // WatchPrefix watches a prefix. This is in addition to the prefix we already have.
-func (c *prefixedConsulClient) WatchPrefix(path string, factory InstanceFactory, done chan struct{}, f func(string, interface{}) bool) {
+func (c *prefixedConsulClient) WatchPrefix(path string, factory InstanceFactory, done <-chan struct{}, f func(string, interface{}) bool) {
 	c.consul.WatchPrefix(c.prefix+path, factory, done, f)
 }
 
 // WatchKey watches a key.
-func (c *prefixedConsulClient) WatchKey(key string, factory InstanceFactory, done chan struct{}, f func(interface{}) bool) {
+func (c *prefixedConsulClient) WatchKey(key string, factory InstanceFactory, done <-chan struct{}, f func(interface{}) bool) {
 	c.consul.WatchKey(c.prefix+key, factory, done, f)
 }
 

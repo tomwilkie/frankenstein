@@ -43,7 +43,7 @@ var ingestorOwnershipDesc = prometheus.NewDesc(
 // CoordinationStateClient is an interface to getting changes to the coordination
 // state.  Should allow us to swap out Consul for something else (mesh?) later.
 type CoordinationStateClient interface {
-	WatchKey(key string, factory InstanceFactory, done chan struct{}, f func(interface{}) bool)
+	WatchKey(key string, factory InstanceFactory, done <-chan struct{}, f func(interface{}) bool)
 }
 
 // Ring holds the information about the members of the consistent hash circle.
