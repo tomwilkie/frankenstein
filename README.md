@@ -24,19 +24,26 @@ Once you have created your instance, note down the 'Service Token' listed
 underneath 'Probes' in the box on the right of the screen. You will use this
 token to authenticate your retrieval agent with Weave Cloud.
 
-The retrieval agent is just a normal Prometheus instance that uses the
-standard Prometheus config to configure Service Discovery and Relabeling. To
-use the retrieval agent,
-[download Prometheus 1.1.0 or later](https://prometheus.io/download/), install
-it and run the following:
+The retrieval agent is (mostly) a normal Prometheus instance. To get it, you
+can either build it from source in the
+[frankenstein branch of Prometheus](https://github.com/tomwilkie/prometheus/tree/frankenstein)
+or
+[download a Linux amd64 binary](https://drive.google.com/open?id=0BwqTw528sZRIWlZNS1RFTFVBcmc).
 
-    prometheus -config.file=... -experimental.storage.remote.address=$$$jml doesn't know what should go here$$$
+Once you've got the retrieval agent, you will need to provide a standard
+[Prometheus config file](https://prometheus.io/docs/operating/configuration/)
+so it can discover your services and relabel them appropriately, and then run
+the following:
+
+    prometheus -config.file=... -storage.remote.generic-url=http://user:<token>@cloud.weave.works/api/prom/push
+
+Where `<token>` is the Service Token you obtained from Weave Cloud.
 
 Once you have started your retrieval agent you can enter Prometheus queries
 into Weave Cloud. Go to https://cloud.weave.works and click the graph icon to
 the right of the instance selector:
 
-    TODO(jml): Put image here
+![Cropped screenshot of Weave Cloud showing Prometheus button as graph](weave-cloud-snippet.png?raw=true)
 
 To use the Prometheus Service with Grafana, configure your Grafana instance to
 have a datasource with the following parameters:
